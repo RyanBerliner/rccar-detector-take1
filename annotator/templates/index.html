@@ -1,0 +1,267 @@
+<html>
+  <head>
+    <title>Annotator</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px;
+        margin: 0;
+        height: 100%;
+      }
+
+      .artboard {
+        flex-basis: 70%;
+        position: relative;
+      }
+
+      img {
+        width: 100%;
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: none;
+      }
+
+      form {
+        padding-left: 20px;
+        flex-basis: 30%;
+      }
+
+      fieldset {
+        margin-bottom: 1rem;
+      }
+
+      label:not(:last-child) {
+        display: block;
+        margin-bottom: 1rem;
+      }
+
+      form strong {
+        color: red;
+      }
+
+      #coordinates {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background-color: white;
+      }
+
+      body.mode-active #coordinates {
+        background-color: red;
+        color: white;
+      }
+
+      #bounding-box {
+        position: absolute;
+        background-color: rgba(255,0,0,0.35);
+        pointer-events: none;
+        display: none;
+      }
+
+      .crosshair {
+        background-color: white;
+        position: absolute;
+        pointer-events: none;
+      }
+
+      body.mode-active .crosshair {
+        background-color: red;
+      }
+
+      .crosshair.x {
+        width: 1px;
+      }
+
+      .crosshair.y {
+        height: 1px;
+        left: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="artboard">
+      <img src="/datasets/all/{{ image }}.jpg" alt="" id="image" />
+      <div id="bounding-box"></div>
+      <div id="crosshair-x" class="crosshair x"></div>
+      <div id="crosshair-y" class="crosshair y"></div>
+    </div>
+    <form method="POST" action="/">
+      <p>Place a bounding box around the RC Car in the image. If there is no rc car, you may submit the empty form.</p>
+      <fieldset>
+        <legend>Object Details</legend>
+        <label><input type="checkbox" name="difficult"> Difficult <strong>Press D to toggle</strong></label>
+        <label><input type="checkbox" name="truncated"> Truncated <strong>Press T to toggle</strong></label>
+      </fieldset>
+      <fieldset>
+        <legend>Top Left Bounding Box Point</legend>
+        <p><strong>Press F</strong> to select point on image with cursor</p>
+        <label>Top Left X (px) <input type="number" name="top_left_x" /></label>
+        <label>Top Left Y (px) <input type="number" name="top_left_y" /></label>
+      </fieldset>
+      <fieldset>
+        <legend>Bottom Right Bounding Box Point</legend>
+        <p><strong>Press G</strong> to select point on image with cursor</p>
+        <label>Bottom Right X (px) <input type="number" name="bottom_right_x" /></label>
+        <label>Bottom Right Y (px) <input type="number" name="bottom_right_y" /></label>
+      </fieldset>
+      <input type="hidden" name="image" value="{{ image }}" />
+      <input type="submit" /> 
+      <p><strong>Press ENTER</strong> to submit</p>
+    </form>
+    <span id="coordinates"></span>
+    <script>
+      (function() {
+        // Get all elements we will need to reference
+        const body = document.getElementsByTagName('BODY')[0],
+              form = document.getElementsByTagName('FORM')[0],
+              img = document.getElementById('image'),
+              coord = document.getElementById('coordinates'),
+              topLeftX = document.getElementsByName('top_left_x')[0],
+              topLeftY = document.getElementsByName('top_left_y')[0],
+              bottomRightX = document.getElementsByName('bottom_right_x')[0],
+              bottomRightY = document.getElementsByName('bottom_right_y')[0],
+              difficult = document.getElementsByName('difficult')[0],
+              truncated = document.getElementsByName('truncated')[0],
+              bbox = document.getElementById('bounding-box'),
+              crossX = document.getElementById('crosshair-x'),
+              crossY = document.getElementById('crosshair-y');
+
+        // Add keyboard shortcuts
+        let topLeft = '(Top Left)',
+            bottomRight = '(Bottom Right)',
+            mode = null;
+        document.onkeypress = function(event) {
+          const key = event.key;
+          switch(event.key) {
+            case 'd':
+            case 'D':
+              difficult.checked = !difficult.checked;
+              break;
+            case 't':
+            case 'T':
+              truncated.checked = !truncated.checked;
+              break;
+            case 'f':
+            case 'F':
+              changeMode(topLeft);
+              break;
+            case 'g':
+            case 'G':
+              changeMode(bottomRight);
+              break;
+            case 'Enter':
+              form.submit();
+              return;
+            default:
+              changeMode(null);
+              break;
+          }
+          updateCoordLabel();
+        };
+
+        // Hover events for image
+        img.onmouseleave = function(event) {
+          const iw = img.naturalWidth,
+                ih = this.naturalHeight,
+                threshold = 50;
+
+          if (currentX  < threshold) currentX = 0;
+          if (currentX + threshold > iw) currentX = iw;
+          if (currentY < threshold) currentY = 0;
+          if (currentY + threshold > ih) currentY = ih;
+
+          updateCoordLabel();
+        }
+
+        // Update coordinates
+        let currentX, currentY;
+        img.onmousemove = function(event) {
+          // start stackoverflow https://stackoverflow.com/questions/34867066/javascript-mouse-click-coordinates-for-image
+          const bounds = this.getBoundingClientRect(),
+                left = bounds.left,
+                top = bounds.top,
+                x = event.pageX - left,
+                y = event.pageY - top,
+                cw = this.clientWidth,
+                ch = this.clientHeight,
+                iw = this.naturalWidth,
+                ih = this.naturalHeight,
+                px = Math.floor(x / cw * iw),
+                py = Math.floor(y / ch * ih),
+                ratio = cw / iw;
+          currentX = px;
+          currentY = py;
+          // end stackoverflow
+          crossX.style.left = currentX * ratio;
+          crossX.style.height = ch;
+          crossX.style.top = -1 * (ch / 2);
+          crossY.style.top = (currentY * ratio) - (ch / 2);
+          crossY.style.width = cw;
+          updateCoordLabel();
+        }
+
+        // When the form changes redraw the bounding box
+        form.onchange = function() {
+          const ch = img.clientHeight,
+                nh = img.naturalHeight,
+                ratio = ch / nh;
+
+          if ((topLeftX.value === '' || topLeftY.value === '') &&
+              (bottomRightX.value === '' || bottomRightY === '')) {
+            bbox.style.display = 'none';
+            return;
+          }
+
+          bbox.style.display = 'block';
+          bbox.style.left = topLeftX.value * ratio;
+          bbox.style.top = topLeftY.value * ratio - (ch / 2);
+          bbox.style.width = (bottomRightX.value - topLeftX.value) * ratio;
+          bbox.style.height = (bottomRightY.value - topLeftY.value) * ratio;
+        }
+
+        // Make clicks
+        body.onclick = function() {
+          if (mode == null) {
+            return;
+          }
+
+          const x = mode == topLeft ? topLeftX : bottomRightX,
+                y = mode == topLeft ? topLeftY : bottomRightY;
+
+          x.value = currentX;
+          y.value = currentY;
+
+          const event = new Event('change');
+          form.dispatchEvent(event);
+
+          // Reset mode
+          changeMode(null);
+          updateCoordLabel();
+        }
+
+        // Helper functions
+        function changeMode(newMode) {
+          mode = newMode;
+          if (mode == null) {
+            body.classList.remove('mode-active');
+          } else {
+            body.classList.add('mode-active');
+          }
+        }
+
+        function updateCoordLabel() {
+          coord.innerText = `${mode == null ? '(press F or G)' : mode} x: ${currentX} y: ${currentY}`;
+        }
+      })();
+    </script>
+  </body>
+</html>
+

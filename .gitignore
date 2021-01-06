@@ -1,0 +1,7 @@
+*.h5
+__pycache__
+all-images-detected/*
+.DS_Store
+datasets/*
+detected-video*
+footage/*
